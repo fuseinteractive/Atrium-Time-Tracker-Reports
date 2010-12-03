@@ -1,0 +1,111 @@
+<?php
+
+include_once('atrium_time_tracker_reports.features.inc');
+
+/**
+ * Implementation of hook_menu()
+ */
+function atrium_time_tracker_reports_menu() {
+  $items = array();
+  
+  $items['reports/js'] = array(
+    'page callback' => 'report_js',
+    'access arguments' => array('view time tracker entries'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_form_alter()
+ */
+function atrium_time_tracker_reports_form_views_exposed_form_alter(&$form, $form_state) {
+  
+  // Only want this to work on the atrium_time_tracker_reports view for now
+  if ($form['#id'] == 'views-exposed-form-atrium-time-tracker-reports-page-1') {
+    dpm($form_state);
+    // Only applies the AHAH if it both fields are there
+    if($form['group_nid'] && $form['pid']) {
+      $form['group_nid']['#ahah'] = array(
+        'event' => 'change',
+        'path' => 'reports/js',
+        'wrapper' => 'edit-pid-wrapper',
+        'method' => 'replace',
+        'effect' => 'slide',
+      );
+      $form['pid']['#options'] = array('All' => t('<All>'));
+    }
+  }
+}
+
+/**
+ * AHAH Callback for the views filters
+ * Creates a dependency for the 'Project' filter to 
+ * Get the user to choose a Group First.
+ *
+ * Currently building the html from scratch rather than using
+ * a drupal function because views exposed filters uses a different
+ * caching method for it's form build_id etc. and we can't employ
+ * the usual AHAH methods.
+ */
+function report_js() {
+  
+  // Get the chosen group from the POST variable
+  $group_nid = $_POST['group_nid'];
+  
+  $projects = _get_projects_for_group($group_nid);
+  
+  $options = '';
+  foreach ($projects as $nid => $project) {
+    $options .= '<option value="' . $nid . '">' . $project . '</option>';
+  }
+  
+  // Rebuild the element the way views expects it to be built
+  $html = '<select id="edit-pid" class="form-select" name="pid"><option selected="selected" value="All">&lt;Any&gt;</option>'. $options .'</select>';
+  
+  $output = theme('status_messages') . $html;
+  
+  drupal_json(array('status' => TRUE, 'data' => $output));
+}
+
+/**
+ * Returns the projects for a given Group ID
+ *
+ * NOTE:
+ * Groups and Projects are just node types, all stored in the
+ * node table in the db. However the og_ancestry table
+ * stored the relationship between a project and a group.
+ *
+ * @param
+ * The Group nid for the project.
+ */
+function _get_projects_for_group($group_id = 'All') {
+  $options = array();
+  
+  if ($group_id == 'All') {
+    // $sql = "SELECT node.title, node.nid
+    //             FROM {node}
+    //             JOIN {og_ancestry} AS oa ON oa.nid = node.nid
+    //             JOIN {node} AS no ON no.nid = oa.group_nid
+    //             WHERE node.type = '%s'
+    //             ORDER BY node.title ASC";
+    
+    $options[$group_id] = t('<All>');
+  }
+  else {
+    $sql = "SELECT node.title, node.nid
+            FROM {node}
+            JOIN {og_ancestry} AS oa ON oa.nid = node.nid
+            JOIN {node} AS no ON no.nid = oa.group_nid
+            WHERE node.type = '%s'
+            AND no.nid = '%s'";
+ 
+    $result = db_query($sql, 'casetracker_basic_project', $group_id);
+  
+    while ($row = db_fetch_object($result)) {
+      $options[$row->nid] = $row->title;
+    }
+  }
+  return $options;
+}
