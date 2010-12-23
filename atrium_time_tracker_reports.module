@@ -24,7 +24,7 @@ function atrium_time_tracker_reports_form_views_exposed_form_alter(&$form, $form
   
   // Only want this to work on the atrium_time_tracker_reports view for now
   if ($form['#id'] == 'views-exposed-form-atrium-time-tracker-reports-page-1') {
-    dpm($form_state);
+    //dpm($form_state);
     // Only applies the AHAH if it both fields are there
     if($form['group_nid'] && $form['pid']) {
       $form['group_nid']['#ahah'] = array(
