@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * @file
+ * This file adds dependency functionality to the exposed filters
+ * On the atrium time tracker reports. It will filter out the project
+ * options based on the Group choice using AHAH replacement.
+ * 
+ * NOTE: The Project options actually automatically filter based on
+ * which group (space) you are in so we disable the AHAH when the user
+ * is in an active space.
+ */
+
 include_once('atrium_time_tracker_reports.features.inc');
 
 /**
@@ -24,9 +35,16 @@ function atrium_time_tracker_reports_form_views_exposed_form_alter(&$form, $form
   
   // Only want this to work on the atrium_time_tracker_reports view for now
   if ($form['#id'] == 'views-exposed-form-atrium-time-tracker-reports-page-1') {
-    //dpm($form_state);
-    // Only applies the AHAH if it both fields are there
-    if($form['group_nid'] && $form['pid']) {
+    // If we're in a particular space, the project drop down automatically
+    // reduces to only show projects within the current space, but we have to
+    // manually adjust the group drop down to match or it's confusing
+    if ($form['group_nid'] && $space = spaces_get_space()) {
+      $form['group_nid']['#options'] = array(
+        $space->id => $space->group->title,
+      );
+      $form['group_nid']['#value'] = $space->id;
+    } // Only applies the AHAH if it both fields are there
+    elseif ($form['group_nid'] && $form['pid']) {
       $form['group_nid']['#ahah'] = array(
         'event' => 'change',
         'path' => 'reports/js',
@@ -34,7 +52,11 @@ function atrium_time_tracker_reports_form_views_exposed_form_alter(&$form, $form
         'method' => 'replace',
         'effect' => 'slide',
       );
-      $form['pid']['#options'] = array('All' => t('<All>'));
+      if (isset($_GET['group_nid']) && is_numeric($_GET['group_nid'])) {
+        $options = _get_projects_for_group($_GET['group_nid']);
+        $form['pid']['#options'] = $options;
+      }
+      //$form['pid']['#options'] = array('All' => t('<Any>'));
     }
   }
 }
@@ -58,11 +80,16 @@ function report_js() {
   
   $options = '';
   foreach ($projects as $nid => $project) {
-    $options .= '<option value="' . $nid . '">' . $project . '</option>';
+    if ($nid == 'All') {
+      $options = '<option selected="selected" value="All">&lt;Any&gt;</option>';
+    }
+    else {
+      $options .= '<option value="' . $nid . '">' . $project . '</option>';
+    }
   }
   
   // Rebuild the element the way views expects it to be built
-  $html = '<select id="edit-pid" class="form-select" name="pid"><option selected="selected" value="All">&lt;Any&gt;</option>'. $options .'</select>';
+  $html = '<select id="edit-pid" class="form-select" name="pid">'. $options .'</select>';
   
   $output = theme('status_messages') . $html;
   
@@ -81,17 +108,18 @@ function report_js() {
  * The Group nid for the project.
  */
 function _get_projects_for_group($group_id = 'All') {
-  $options = array();
+  $options = array('All' => urlencode(t("<Any>")));
   
   if ($group_id == 'All') {
-    // $sql = "SELECT node.title, node.nid
-    //             FROM {node}
-    //             JOIN {og_ancestry} AS oa ON oa.nid = node.nid
-    //             JOIN {node} AS no ON no.nid = oa.group_nid
-    //             WHERE node.type = '%s'
-    //             ORDER BY node.title ASC";
-    
-    $options[$group_id] = t('<All>');
+    $sql = "SELECT node.title, node.nid
+            FROM {node}
+            JOIN {og_ancestry} AS oa ON oa.nid = node.nid
+            JOIN {node} AS no ON no.nid = oa.group_nid
+            WHERE node.type = '%s'
+            AND node.status = 1
+            ORDER BY node.title ASC";
+            
+    $result = db_query($sql, 'casetracker_basic_project');
   }
   else {
     $sql = "SELECT node.title, node.nid
@@ -99,13 +127,16 @@ function _get_projects_for_group($group_id = 'All') {
             JOIN {og_ancestry} AS oa ON oa.nid = node.nid
             JOIN {node} AS no ON no.nid = oa.group_nid
             WHERE node.type = '%s'
-            AND no.nid = '%s'";
- 
+            AND no.nid = '%s'
+            AND node.status = 1
+            ORDER BY node.title ASC";
+            
     $result = db_query($sql, 'casetracker_basic_project', $group_id);
-  
-    while ($row = db_fetch_object($result)) {
-      $options[$row->nid] = $row->title;
-    }
   }
+
+  while ($row = db_fetch_object($result)) {
+    $options[$row->nid] = $row->title;
+  }
+  
   return $options;
 }
