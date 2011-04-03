@@ -21,7 +21,7 @@ function atrium_time_tracker_reports_menu() {
   
   $items['reports/js'] = array(
     'page callback' => 'report_js',
-    'access arguments' => array('view time tracker entries'),
+    'access arguments' => array('view all time tracker entries'),
     'type' => MENU_CALLBACK,
   );
 
